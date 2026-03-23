@@ -1,0 +1,18 @@
+name: LBmenu
+version: '1.0'
+main: me.wethink.lBmenu.LBmenu
+api-version: '1.21'
+authors: [ WeThink ]
+folia-supported: true
+softdepend: [ PlaceholderAPI, Topper, ajLeaderboards ]
+
+commands:
+  lbmenu:
+    description: Open a leaderboard GUI or reload config
+    usage: /lbmenu <placeholder|reload>
+    aliases: [ lb ]
+
+permissions:
+  lbmenu.reload:
+    description: Allows reloading the LBmenu config
+    default: op
