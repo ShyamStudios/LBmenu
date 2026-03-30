@@ -53,10 +53,7 @@
                             <pattern>com.tcoded.folialib</pattern>
                             <shadedPattern>me.wethink.lbmenu.lib.folialib</shadedPattern>
                         </relocation>
-                        <relocation>
-                            <pattern>com.github.benmanes.caffeine</pattern>
-                            <shadedPattern>me.wethink.lbmenu.lib.caffeine</shadedPattern>
-                        </relocation>
+
                         <relocation>
                             <pattern>org.bstats</pattern>
                             <shadedPattern>me.wethink.lbmenu.lib.bstats</shadedPattern>
@@ -121,8 +118,8 @@
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
-            <version>3.2.1</version>
-            <scope>compile</scope>
+            <version>3.2.3</version>
+            <scope>provided</scope>
         </dependency>
 
         <!-- PlaceholderAPI -->

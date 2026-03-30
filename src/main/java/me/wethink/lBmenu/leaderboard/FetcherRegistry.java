@@ -10,7 +10,7 @@ import org.bukkit.Bukkit;
  */
 public class FetcherRegistry {
 
-    private static LeaderboardFetcher cached;
+    private static volatile LeaderboardFetcher cached;
 
     /** Returns the active fetcher, detecting once and caching the result. */
     public static LeaderboardFetcher get() {

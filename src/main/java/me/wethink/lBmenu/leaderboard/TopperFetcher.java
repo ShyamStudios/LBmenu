@@ -26,7 +26,7 @@ public class TopperFetcher implements LeaderboardFetcher {
 
     // Cached after first resolution — getOfflinePlayer(name) does a blocking
     // filesystem lookup the first time for unknown names.
-    private static OfflinePlayer dummy;
+    private static volatile OfflinePlayer dummy;
 
     private static OfflinePlayer getDummy() {
         if (dummy != null) return dummy;

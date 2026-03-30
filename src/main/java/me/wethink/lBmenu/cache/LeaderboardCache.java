@@ -1,44 +1,43 @@
 package me.wethink.lBmenu.cache;
 
-import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Scheduler;
 import me.wethink.lBmenu.LBmenu;
 import me.wethink.lBmenu.leaderboard.FetcherRegistry;
 import me.wethink.lBmenu.leaderboard.LeaderboardEntry;
 import org.bukkit.Bukkit;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
- * Cache for leaderboard data.
+ * High-performance leaderboard cache backed by Caffeine's {@link AsyncLoadingCache}.
  *
- * <p>Key behaviours:
+ * <p>Key design decisions:
  * <ul>
- *   <li>First open triggers a blocking main-thread fetch (cold start only).</li>
- *   <li>A background task refreshes known boards on the configured
- *       {@code cache.leaderboard.refresh-seconds} interval (default 240 s)
- *       so the cache is never cold on subsequent opens.</li>
- *   <li>All PlaceholderAPI calls are dispatched to the main thread; async
- *       callers block on a CompletableFuture with a 5-second timeout.</li>
+ *   <li><b>AsyncLoadingCache</b> — automatic deduplication of concurrent fetches for
+ *       the same key (cache stampede protection). If 50 players open the same board
+ *       simultaneously, only <em>one</em> PAPI fetch is dispatched.</li>
+ *   <li><b>refreshAfterWrite</b> — after the refresh interval, the <em>next</em> read
+ *       triggers an async reload while instantly returning the stale value. Players
+ *       never wait for a fetch on a warm cache. No manual BukkitTask needed.</li>
+ *   <li><b>expireAfterWrite</b> — hard eviction boundary. Entries are fully removed
+ *       after this TTL, forcing a fresh fetch on the next access.</li>
+ *   <li><b>Scheduler.systemScheduler()</b> — prompts Caffeine to clean up expired
+ *       entries eagerly rather than waiting for the next read/write to trigger
+ *       maintenance. Reduces stale memory footprint.</li>
+ *   <li><b>Main-thread dispatch</b> — PlaceholderAPI requires main-thread access.
+ *       The async loader dispatches a task to the main thread and completes the
+ *       {@link CompletableFuture} there.</li>
  * </ul>
  */
 public class LeaderboardCache {
 
     private final LBmenu plugin;
-    private final Cache<String, List<LeaderboardEntry>> cache;
-
-    // Boards opened at least once — the background task keeps these warm.
-    private final Set<String> knownBoards = ConcurrentHashMap.newKeySet();
-
-    private BukkitTask refreshTask;
+    private final AsyncLoadingCache<String, List<LeaderboardEntry>> cache;
 
     public LeaderboardCache(LBmenu plugin) {
         this.plugin = plugin;
@@ -47,64 +46,81 @@ public class LeaderboardCache {
         int refresh = plugin.getGUIConfig().getLeaderboardRefreshSeconds();
 
         cache = Caffeine.newBuilder()
-                .expireAfterWrite(ttl, TimeUnit.SECONDS)
                 .maximumSize(maxSize)
-                .build();
+                .expireAfterWrite(ttl, TimeUnit.SECONDS)
+                .refreshAfterWrite(refresh, TimeUnit.SECONDS)
+                .scheduler(Scheduler.systemScheduler())
+                .buildAsync((key, executor) -> loadFromMainThread(key));
 
-        startRefreshTask(refresh);
-
-        plugin.getLogger().info("[LeaderboardCache] TTL=" + ttl + "s  refresh=" + refresh + "s");
+        plugin.getLogger().info("[LeaderboardCache] TTL=" + ttl + "s  refresh=" + refresh
+                + "s  maxSize=" + maxSize + "  (AsyncLoadingCache + refreshAfterWrite)");
     }
 
-    private void startRefreshTask(int refreshSeconds) {
-        long refreshTicks = refreshSeconds * 20L;
-        refreshTask = Bukkit.getScheduler().runTaskTimerAsynchronously(
-                plugin, this::refreshAll, refreshTicks, refreshTicks);
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /**
+     * Returns a {@link CompletableFuture} of leaderboard entries for the given board.
+     *
+     * <p>If the entry is cached and fresh, the future completes immediately (zero cost).
+     * If the entry is cached but stale, the stale value is returned instantly while a
+     * background refresh is triggered. If the entry is absent, a new fetch is dispatched
+     * to the main thread and the future completes when it finishes.
+     *
+     * <p>Concurrent calls for the same key are automatically coalesced — only one
+     * fetch is dispatched regardless of how many callers are waiting.
+     */
+    public CompletableFuture<List<LeaderboardEntry>> getOrFetchAsync(String holderName) {
+        return cache.get(normalize(holderName));
     }
 
     /**
-     * Background refresh — called async.
-     * Dispatches each known board to the main thread (non-blocking fire-and-forget).
+     * Blocking variant for callers that cannot work with futures.
+     * Times out after 5 seconds to avoid hanging the server thread.
      */
-    private void refreshAll() {
-        for (String board : knownBoards) {
-            fetchOnMainThread(board).thenAccept(entries -> {
-                if (!entries.isEmpty()) cache.put(board, entries);
-            }).exceptionally(ex -> {
-                plugin.getLogger().warning(
-                        "[LeaderboardCache] Background refresh failed for '"
-                                + board + "': " + ex.getMessage());
-                return null;
-            });
+    public List<LeaderboardEntry> getOrFetch(String holderName) {
+        try {
+            return getOrFetchAsync(holderName).get(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            plugin.getLogger().warning("[LeaderboardCache] Fetch interrupted for: " + holderName);
+            return List.of();
+        } catch (Exception e) {
+            plugin.getLogger().warning("[LeaderboardCache] Fetch failed for: " + holderName
+                    + " — " + e.getMessage());
+            return List.of();
         }
     }
 
     /**
-     * Returns cached entries, or fetches them (cold start only).
-     * Safe to call from any thread.
+     * Evicts all entries. Call on reload or disable.
      */
-    public List<LeaderboardEntry> getOrFetch(String holderName) {
-        String key = normalize(holderName);
-        knownBoards.add(key);
-
-        List<LeaderboardEntry> cached = cache.getIfPresent(key);
-        if (cached != null) return cached; // hot path — zero main-thread cost
-
-        // Cold start: block until the main-thread fetch completes.
-        List<LeaderboardEntry> fetched = fetchOnMainThreadBlocking(holderName);
-        if (!fetched.isEmpty()) cache.put(key, fetched);
-        return fetched;
+    public void invalidateAll() {
+        cache.synchronous().invalidateAll();
     }
 
     /**
-     * Non-blocking dispatch to main thread.
-     * Used by the background refresh task.
+     * Evicts a single board.
      */
-    private CompletableFuture<List<LeaderboardEntry>> fetchOnMainThread(String holderName) {
+    public void invalidate(String holderName) {
+        cache.synchronous().invalidate(normalize(holderName));
+    }
+
+    // ── Internal ──────────────────────────────────────────────────────────────
+
+    /**
+     * Dispatches a PAPI fetch to the main server thread and completes the future there.
+     * If already on the main thread (e.g. during a synchronous cache load triggered by
+     * a command), executes directly to avoid deadlocking.
+     */
+    private CompletableFuture<List<LeaderboardEntry>> loadFromMainThread(String key) {
+        if (Bukkit.isPrimaryThread()) {
+            return CompletableFuture.completedFuture(doFetch(key));
+        }
+
         CompletableFuture<List<LeaderboardEntry>> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTask(plugin, () -> {
             try {
-                future.complete(List.copyOf(FetcherRegistry.get().fetch(holderName, 0)));
+                future.complete(doFetch(key));
             } catch (Exception e) {
                 future.completeExceptionally(e);
             }
@@ -112,46 +128,9 @@ public class LeaderboardCache {
         return future;
     }
 
-    /**
-     * Blocking version for cold-start only.
-     * If already on the main thread, fetches directly without dispatching.
-     */
-    private List<LeaderboardEntry> fetchOnMainThreadBlocking(String holderName) {
-        if (plugin.getServer().isPrimaryThread()) {
-            return List.copyOf(FetcherRegistry.get().fetch(holderName, 0));
-        }
-        try {
-            return fetchOnMainThread(holderName).get(5, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            plugin.getLogger().warning("[LeaderboardCache] Fetch interrupted for: " + holderName);
-            return List.of();
-        } catch (TimeoutException e) {
-            plugin.getLogger().warning("[LeaderboardCache] Fetch timed out (5 s) for: " + holderName);
-            return List.of();
-        } catch (ExecutionException e) {
-            plugin.getLogger().warning(
-                    "[LeaderboardCache] Fetch failed for: " + holderName + " — " + e.getCause());
-            return List.of();
-        }
-    }
-
-    /** Cancels the background refresh task. Call before rebuilding or on disable. */
-    public void stopRefreshTask() {
-        if (refreshTask != null && !refreshTask.isCancelled()) {
-            refreshTask.cancel();
-        }
-    }
-
-    public void invalidateAll() {
-        cache.invalidateAll();
-        knownBoards.clear();
-    }
-
-    public void invalidate(String holderName) {
-        String key = normalize(holderName);
-        cache.invalidate(key);
-        knownBoards.remove(key);
+    private List<LeaderboardEntry> doFetch(String key) {
+        List<LeaderboardEntry> entries = FetcherRegistry.get().fetch(key, 0);
+        return entries.isEmpty() ? List.of() : List.copyOf(entries);
     }
 
     private static String normalize(String s) {

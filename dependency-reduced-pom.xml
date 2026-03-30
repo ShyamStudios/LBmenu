@@ -40,10 +40,6 @@
               <shadedPattern>me.wethink.lbmenu.lib.folialib</shadedPattern>
             </relocation>
             <relocation>
-              <pattern>com.github.benmanes.caffeine</pattern>
-              <shadedPattern>me.wethink.lbmenu.lib.caffeine</shadedPattern>
-            </relocation>
-            <relocation>
               <pattern>org.bstats</pattern>
               <shadedPattern>me.wethink.lbmenu.lib.bstats</shadedPattern>
             </relocation>
@@ -79,6 +75,12 @@
       <groupId>io.papermc.paper</groupId>
       <artifactId>paper-api</artifactId>
       <version>1.21.1-R0.1-SNAPSHOT</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.github.ben-manes.caffeine</groupId>
+      <artifactId>caffeine</artifactId>
+      <version>3.2.3</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
