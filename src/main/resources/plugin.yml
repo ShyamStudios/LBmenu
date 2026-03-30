@@ -6,9 +6,6 @@ authors: [ WeThink ]
 folia-supported: true
 softdepend: [ PlaceholderAPI, Topper, ajLeaderboards ]
 
-libraries:
-  - com.github.ben-manes.caffeine:caffeine:3.2.3
-
 commands:
   lbmenu:
     description: Open a leaderboard GUI or reload config

@@ -30,11 +30,7 @@ public class GUIListener implements Listener {
         int slotNext  = plugin.getGUIConfig().getSlotNext();
 
         if (slot == slotClose) {
-            // Refresh: close current inventory and re-open with fresh data.
-            // invalidate() forces the AsyncLoadingCache to fetch new data on next access.
             player.closeInventory();
-            plugin.getLeaderboardCache().invalidate(holder.getHolderName());
-            LeaderboardGUI.openAsync(plugin, player, holder.getHolderName());
         } else if (slot == slotPrev && page > 1) {
             // gui already has pre-built skulls — open() is just inventory population,
             // so it's safe and fast to call directly on the server thread here.

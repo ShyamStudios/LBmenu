@@ -45,7 +45,7 @@ public final class LBmenu extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // AsyncLoadingCache handles its own cleanup — no manual task to stop.
+        if (leaderboardCache != null) leaderboardCache.stopRefreshTask();
         if (skinCache != null)        skinCache.invalidateAll();
         if (leaderboardCache != null) leaderboardCache.invalidateAll();
 
@@ -60,10 +60,9 @@ public final class LBmenu extends JavaPlugin {
 
     /**
      * Rebuilds both caches and re-detects the active leaderboard plugin.
-     * AsyncLoadingCache instances are replaced entirely — Caffeine's old instances
-     * are eligible for GC once no in-flight futures reference them.
      */
     public void rebuildCaches() {
+        if (leaderboardCache != null) leaderboardCache.stopRefreshTask();
         if (skinCache != null)        skinCache.invalidateAll();
         if (leaderboardCache != null) leaderboardCache.invalidateAll();
 
@@ -82,6 +81,9 @@ public final class LBmenu extends JavaPlugin {
         String version = getDescription().getVersion();
 
         String authors = String.join(", ", getDescription().getAuthors());
+        String website = getDescription().getWebsite() != null
+                ? getDescription().getWebsite()
+                : "Not specified";
 
         send("");
         send("&b&l━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -94,8 +96,8 @@ public final class LBmenu extends JavaPlugin {
 
         log("&7Initializing Folia scheduler...", "&a✔");
         log("&7Loading GUI configuration...", "&a✔");
-        log("&7Initializing skin cache (AsyncLoadingCache)...", "&a✔");
-        log("&7Initializing leaderboard cache (AsyncLoadingCache + refreshAfterWrite)...", "&a✔");
+        log("&7Initializing skin cache...", "&a✔");
+        log("&7Initializing leaderboard cache...", "&a✔");
         log("&7Registering commands...", "&a✔");
         log("&7Registering listeners...", "&a✔");
 

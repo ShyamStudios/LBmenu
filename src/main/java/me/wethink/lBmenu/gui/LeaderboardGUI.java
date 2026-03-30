@@ -14,25 +14,19 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
  * Immutable GUI snapshot for a leaderboard.
  *
- * <p>All expensive work — skull building, nav item building, title
+ * All expensive work — skull building, nav item building, title
  * deserialization — happens in the constructor on an async thread via
  * {@link #openAsync}. The {@link #open} method only populates an inventory
  * with pre-built objects and has negligible main-thread cost.
- *
- * <p><b>Optimization: Concurrent skull building.</b> All skull template lookups
- * are kicked off concurrently via {@code CompletableFuture.allOf()}, then
- * metadata is applied once all templates have resolved. This turns N sequential
- * I/O-bound lookups into N concurrent lookups with a single synchronization point.
  */
 public class LeaderboardGUI {
 
-
+    private final LBmenu plugin;
     private final GUIConfig cfg;
     private final String holderName;
     private final int totalPages;
@@ -47,37 +41,17 @@ public class LeaderboardGUI {
     private final Component[]  pageTitles;  // indexed [1..totalPages]
 
     public LeaderboardGUI(LBmenu plugin, String holderName, List<LeaderboardEntry> entries) {
-
+        this.plugin     = plugin;
         this.cfg        = plugin.getGUIConfig();
         this.holderName = holderName;
         this.perPage    = Math.max(1, cfg.getSkullSlots().size());
         this.totalPages = Math.max(1, (int) Math.ceil(entries.size() / (double) perPage));
 
-        // ── Concurrent skull building ────────────────────────────────────────
-        // Kick off all skull template futures concurrently.
-        // Caffeine's AsyncLoadingCache deduplicates requests for the same player,
-        // so if a player appears multiple times only one skull build occurs.
+        // ── Skull items ──────────────────────────────────────────────────────
         this.builtSkulls = new ItemStack[entries.size()];
-
-        @SuppressWarnings("unchecked")
-        CompletableFuture<ItemStack>[] skullFutures = new CompletableFuture[entries.size()];
-
         for (int i = 0; i < entries.size(); i++) {
-            final int idx = i;
-            final LeaderboardEntry entry = entries.get(i);
-
-            skullFutures[i] = plugin.getSkinCache()
-                    .getSkullTemplateAsync(entry.playerName())
-                    .thenApply(template -> {
-                        ItemStack skull = applySkullMeta(template.clone(), entry);
-                        builtSkulls[idx] = skull;
-                        return skull;
-                    });
+            builtSkulls[i] = buildSkullItem(entries.get(i));
         }
-
-        // Wait for all skull builds to complete. Since each future is backed by
-        // Caffeine's AsyncLoadingCache, cache hits resolve instantly.
-        CompletableFuture.allOf(skullFutures).join();
 
         // ── Filler ───────────────────────────────────────────────────────────
         this.filler = cfg.isFillerEnabled() ? buildFiller() : null;
@@ -139,11 +113,11 @@ public class LeaderboardGUI {
 
     // ── Item builders (called from constructor on async thread) ───────────────
 
-    /**
-     * Applies rank/player/value metadata to a cloned skull template.
-     */
-    private ItemStack applySkullMeta(ItemStack skull, LeaderboardEntry entry) {
-        ItemMeta meta = skull.getItemMeta();
+    private ItemStack buildSkullItem(LeaderboardEntry entry) {
+        // getSkullTemplate() returns cached template without cloning;
+        // clone once here before mutating meta.
+        ItemStack skull = plugin.getSkinCache().getSkullTemplate(entry.playerName()).clone();
+        ItemMeta meta   = skull.getItemMeta();
         if (meta == null) return skull;
 
         String name = color(cfg.getSkullName()
@@ -222,40 +196,23 @@ public class LeaderboardGUI {
 
     // ── Async factory ─────────────────────────────────────────────────────────
 
-    /**
-     * Entry point for opening a leaderboard GUI.
-     *
-     * <p>Pipeline (fully non-blocking until the final {@code open()} call):
-     * <ol>
-     *   <li>Fetch leaderboard entries from the {@link me.wethink.lBmenu.cache.LeaderboardCache}
-     *       via {@code getOrFetchAsync()} — returns immediately on a warm cache.</li>
-     *   <li>Build the GUI on that same async thread: skull templates are fetched
-     *       concurrently via {@code CompletableFuture.allOf()}, nav items and titles
-     *       are pre-built.</li>
-     *   <li>Dispatch the final {@code open()} call to the entity's thread — this only
-     *       does {@code inv.setItem()} calls with pre-built objects.</li>
-     * </ol>
-     */
     public static void openAsync(LBmenu plugin, Player player, String holderName) {
         plugin.getFoliaLib().getScheduler().runAsync(task -> {
-            // getOrFetchAsync handles main-thread dispatch for PAPI internally.
-            // On a warm cache the future completes immediately with zero main-thread cost.
+            // getOrFetch handles main-thread dispatch for PAPI internally.
+            // On a warm cache this returns immediately with zero main-thread cost.
             List<LeaderboardEntry> entries = plugin.getLeaderboardCache().getOrFetch(holderName);
 
             if (entries.isEmpty()) {
                 plugin.getFoliaLib().getScheduler().runAtEntity(player, syncTask ->
                         player.sendMessage(Component.text(
-                                "No data found for leaderboard: " + holderName,
-                                NamedTextColor.RED)));
+                                "No data found for leaderboard: " + holderName, NamedTextColor.RED)));
                 return;
             }
 
             // All skull, nav item, and title building happens here on the async thread.
-            // Skull templates are fetched concurrently inside the constructor via
-            // CompletableFuture.allOf() — massive parallelism for cache misses.
             LeaderboardGUI gui = new LeaderboardGUI(plugin, holderName, entries);
 
-            // open() is pure inv.setItem() calls — negligible main-thread cost.
+            // open() is now pure inv.setItem() calls — negligible main-thread cost.
             plugin.getFoliaLib().getScheduler().runAtEntity(player, syncTask ->
                     gui.open(player, 1));
         });

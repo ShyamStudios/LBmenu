@@ -21,7 +21,7 @@ public class AjLeaderboardsFetcher implements LeaderboardFetcher {
     private static final int MAX_SCAN = 200;
 
     // Cached after first resolution — avoids repeated blocking lookup.
-    private static volatile OfflinePlayer dummy;
+    private static OfflinePlayer dummy;
 
     private static OfflinePlayer getDummy() {
         if (dummy != null) return dummy;
