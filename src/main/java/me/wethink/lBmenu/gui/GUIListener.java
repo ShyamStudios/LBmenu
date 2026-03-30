@@ -31,9 +31,9 @@ public class GUIListener implements Listener {
 
         if (slot == slotClose) {
             player.closeInventory();
+            plugin.getLeaderboardCache().invalidate(holder.getHolderName());
+            LeaderboardGUI.openAsync(plugin, player, holder.getHolderName());
         } else if (slot == slotPrev && page > 1) {
-            // gui already has pre-built skulls — open() is just inventory population,
-            // so it's safe and fast to call directly on the server thread here.
             gui.open(player, page - 1);
         } else if (slot == slotNext && page < gui.getTotalPages()) {
             gui.open(player, page + 1);

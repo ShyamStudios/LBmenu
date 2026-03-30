@@ -22,8 +22,6 @@ public class GUIConfig {
         snap = new Snapshot(plugin.getConfig(), plugin);
     }
 
-    // ── Getters delegate to the current snapshot ──────────────────────────
-
     public int getRows()                 { return snap.rows; }
     public int getSize()                 { return snap.rows * 9; }
     public String getTitleTemplate()     { return snap.titleTemplate; }
@@ -56,8 +54,6 @@ public class GUIConfig {
     public int getLeaderboardRefreshSeconds() { return snap.leaderboardRefreshSeconds; }
     public int getSkinCacheMinutes()          { return snap.skinCacheMinutes; }
     public int getSkinCacheMaxSize()          { return snap.skinCacheMaxSize; }
-
-    // ── Immutable snapshot ────────────────────────────────────────────────
 
     private static final class Snapshot {
         final int rows;
@@ -117,8 +113,6 @@ public class GUIConfig {
             leaderboardCacheSeconds = Math.max(60, cfg.getInt("cache.leaderboard.ttl-seconds", 300));
             leaderboardCacheMaxSize = Math.max(50, cfg.getInt("cache.leaderboard.max-size", 500));
 
-            // Refresh must be less than TTL and never faster than 60 seconds.
-            // Default: 80% of TTL. Explicit config key overrides the default.
             int defaultRefresh = Math.max(60, (int) (leaderboardCacheSeconds * 0.8));
             leaderboardRefreshSeconds = Math.min(
                     leaderboardCacheSeconds - 1,

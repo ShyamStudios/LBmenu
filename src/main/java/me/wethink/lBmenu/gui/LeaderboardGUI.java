@@ -14,49 +14,51 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
-/**
- * Immutable GUI snapshot for a leaderboard.
- *
- * All expensive work — skull building, nav item building, title
- * deserialization — happens in the constructor on an async thread via
- * {@link #openAsync}. The {@link #open} method only populates an inventory
- * with pre-built objects and has negligible main-thread cost.
- */
 public class LeaderboardGUI {
 
-    private final LBmenu plugin;
     private final GUIConfig cfg;
     private final String holderName;
     private final int totalPages;
     private final int perPage;
 
-    // All items and titles pre-built in constructor (async thread).
     private final ItemStack[]  builtSkulls;
     private final ItemStack    filler;
-    private final ItemStack[]  prevItems;   // indexed [1..totalPages]
+    private final ItemStack[]  prevItems;
     private final ItemStack[]  nextItems;
     private final ItemStack[]  closeItems;
-    private final Component[]  pageTitles;  // indexed [1..totalPages]
+    private final Component[]  pageTitles;
 
     public LeaderboardGUI(LBmenu plugin, String holderName, List<LeaderboardEntry> entries) {
-        this.plugin     = plugin;
         this.cfg        = plugin.getGUIConfig();
         this.holderName = holderName;
         this.perPage    = Math.max(1, cfg.getSkullSlots().size());
         this.totalPages = Math.max(1, (int) Math.ceil(entries.size() / (double) perPage));
 
-        // ── Skull items ──────────────────────────────────────────────────────
         this.builtSkulls = new ItemStack[entries.size()];
+
+        @SuppressWarnings("unchecked")
+        CompletableFuture<ItemStack>[] skullFutures = new CompletableFuture[entries.size()];
+
         for (int i = 0; i < entries.size(); i++) {
-            builtSkulls[i] = buildSkullItem(entries.get(i));
+            final int idx = i;
+            final LeaderboardEntry entry = entries.get(i);
+
+            skullFutures[i] = plugin.getSkinCache()
+                    .getSkullTemplateAsync(entry.playerName())
+                    .thenApply(template -> {
+                        ItemStack skull = applySkullMeta(template.clone(), entry);
+                        builtSkulls[idx] = skull;
+                        return skull;
+                    });
         }
 
-        // ── Filler ───────────────────────────────────────────────────────────
+        CompletableFuture.allOf(skullFutures).join();
+
         this.filler = cfg.isFillerEnabled() ? buildFiller() : null;
 
-        // ── Nav items and titles (one set per page, 1-indexed) ───────────────
         prevItems  = new ItemStack[totalPages + 1];
         nextItems  = new ItemStack[totalPages + 1];
         closeItems = new ItemStack[totalPages + 1];
@@ -73,20 +75,14 @@ public class LeaderboardGUI {
         }
     }
 
-    /**
-     * Opens the inventory at the given page (1-indexed).
-     * Must be called on the main / entity thread.
-     * No item building or string deserialization happens here.
-     */
     public void open(Player player, int page) {
         int p = Math.max(1, Math.min(page, totalPages));
 
         Inventory inv = Bukkit.createInventory(
                 new LeaderboardHolder(holderName, p, this),
                 cfg.getSize(),
-                pageTitles[p]); // pre-deserialized — no legacy() call here
+                pageTitles[p]);
 
-        // Place pre-built skull items.
         int startIndex      = (p - 1) * perPage;
         List<Integer> slots = cfg.getSkullSlots();
         for (int i = 0; i < slots.size(); i++) {
@@ -96,14 +92,12 @@ public class LeaderboardGUI {
             if (slot < cfg.getSize()) inv.setItem(slot, builtSkulls[entryIndex]);
         }
 
-        // Place pre-built filler.
         if (filler != null) {
             for (int slot = 0; slot < cfg.getSize(); slot++) {
                 if (inv.getItem(slot) == null) inv.setItem(slot, filler);
             }
         }
 
-        // Place pre-built nav items — zero allocation.
         inv.setItem(cfg.getSlotClose(), closeItems[p]);
         if (p > 1)          inv.setItem(cfg.getSlotPrev(), prevItems[p]);
         if (p < totalPages) inv.setItem(cfg.getSlotNext(), nextItems[p]);
@@ -111,13 +105,8 @@ public class LeaderboardGUI {
         player.openInventory(inv);
     }
 
-    // ── Item builders (called from constructor on async thread) ───────────────
-
-    private ItemStack buildSkullItem(LeaderboardEntry entry) {
-        // getSkullTemplate() returns cached template without cloning;
-        // clone once here before mutating meta.
-        ItemStack skull = plugin.getSkinCache().getSkullTemplate(entry.playerName()).clone();
-        ItemMeta meta   = skull.getItemMeta();
+    private ItemStack applySkullMeta(ItemStack skull, LeaderboardEntry entry) {
+        ItemMeta meta = skull.getItemMeta();
         if (meta == null) return skull;
 
         String name = color(cfg.getSkullName()
@@ -177,8 +166,6 @@ public class LeaderboardGUI {
         return glass;
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
     private static String color(String s) {
         return s == null ? "" : s.replace("&", "§");
     }
@@ -194,25 +181,20 @@ public class LeaderboardGUI {
 
     public int getTotalPages() { return totalPages; }
 
-    // ── Async factory ─────────────────────────────────────────────────────────
-
     public static void openAsync(LBmenu plugin, Player player, String holderName) {
         plugin.getFoliaLib().getScheduler().runAsync(task -> {
-            // getOrFetch handles main-thread dispatch for PAPI internally.
-            // On a warm cache this returns immediately with zero main-thread cost.
             List<LeaderboardEntry> entries = plugin.getLeaderboardCache().getOrFetch(holderName);
 
             if (entries.isEmpty()) {
                 plugin.getFoliaLib().getScheduler().runAtEntity(player, syncTask ->
                         player.sendMessage(Component.text(
-                                "No data found for leaderboard: " + holderName, NamedTextColor.RED)));
+                                "No data found for leaderboard: " + holderName,
+                                NamedTextColor.RED)));
                 return;
             }
 
-            // All skull, nav item, and title building happens here on the async thread.
             LeaderboardGUI gui = new LeaderboardGUI(plugin, holderName, entries);
 
-            // open() is now pure inv.setItem() calls — negligible main-thread cost.
             plugin.getFoliaLib().getScheduler().runAtEntity(player, syncTask ->
                     gui.open(player, 1));
         });

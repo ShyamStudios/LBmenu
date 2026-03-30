@@ -4,10 +4,6 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Custom InventoryHolder that carries the leaderboard context so the
- * click listener can identify our GUIs and handle pagination.
- */
 public class LeaderboardHolder implements InventoryHolder {
 
     private final String holderName;

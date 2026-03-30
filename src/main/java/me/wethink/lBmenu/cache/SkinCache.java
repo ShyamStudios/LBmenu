@@ -1,7 +1,8 @@
 package me.wethink.lBmenu.cache;
 
-import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Scheduler;
 import me.wethink.lBmenu.LBmenu;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -12,44 +13,50 @@ import org.bukkit.inventory.meta.SkullMeta;
 
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 public class SkinCache {
 
     private final LBmenu plugin;
-    private final Cache<String, OfflinePlayer> playerCache;
-    private final Cache<String, ItemStack> skullTemplateCache;
+    private final AsyncLoadingCache<String, ItemStack> skullCache;
 
     public SkinCache(LBmenu plugin) {
         this.plugin = plugin;
         int ttlMinutes = plugin.getGUIConfig().getSkinCacheMinutes();
         int maxSize    = plugin.getGUIConfig().getSkinCacheMaxSize();
 
-        playerCache = Caffeine.newBuilder()
-                .expireAfterWrite(ttlMinutes, TimeUnit.MINUTES)
+        skullCache = Caffeine.newBuilder()
                 .maximumSize(maxSize)
-                .build();
+                .expireAfterAccess(ttlMinutes, TimeUnit.MINUTES)
+                .scheduler(Scheduler.systemScheduler())
+                .buildAsync((key, executor) ->
+                        CompletableFuture.supplyAsync(() -> buildSkullTemplate(key), executor));
 
-        skullTemplateCache = Caffeine.newBuilder()
-                .expireAfterWrite(ttlMinutes, TimeUnit.MINUTES)
-                .maximumSize(maxSize)
-                .build();
+        plugin.getLogger().info("[SkinCache] TTL=" + ttlMinutes + "min (expireAfterAccess)"
+                + "  maxSize=" + maxSize + "  (single AsyncLoadingCache)");
     }
 
-    /**
-     * Returns the cached skull template (not cloned).
-     * Callers that need to mutate the item must clone it themselves.
-     * Called from async thread during GUI pre-build — safe because
-     * resolveOfflinePlayer avoids main-thread-only APIs.
-     */
+    public CompletableFuture<ItemStack> getSkullTemplateAsync(String playerRef) {
+        return skullCache.get(normalizeKey(playerRef));
+    }
+
     public ItemStack getSkullTemplate(String playerRef) {
-        String key = normalizeKey(playerRef);
-        return skullTemplateCache.get(key, k -> buildSkullTemplate(playerRef));
+        try {
+            return getSkullTemplateAsync(playerRef).get(5, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            plugin.getLogger().warning("[SkinCache] Skull build failed for '"
+                    + playerRef + "': " + e.getMessage());
+            return new ItemStack(Material.PLAYER_HEAD);
+        }
+    }
+
+    public void invalidateAll() {
+        skullCache.synchronous().invalidateAll();
     }
 
     private ItemStack buildSkullTemplate(String playerRef) {
-        OfflinePlayer target = playerCache.get(
-                normalizeKey(playerRef), k -> resolveOfflinePlayer(playerRef));
+        OfflinePlayer target = resolveOfflinePlayer(playerRef);
 
         ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
         SkullMeta meta = (SkullMeta) skull.getItemMeta();
@@ -74,20 +81,12 @@ public class SkinCache {
         OfflinePlayer serverCached = Bukkit.getOfflinePlayerIfCached(trimmed);
         if (serverCached != null) return serverCached;
 
-        // Only reached for players who have never joined — does a blocking
-        // filesystem/DB lookup. Log so you know when this is happening.
-        plugin.getLogger().warning(
-                "[SkinCache] Blocking lookup for unknown player: '" + trimmed +
-                        "' — store UUIDs in your leaderboard source to avoid this.");
+        plugin.getLogger().warning("[SkinCache] Blocking lookup for unknown player: '"
+                + trimmed + "' — store UUIDs in your leaderboard source to avoid this.");
         return Bukkit.getOfflinePlayer(trimmed);
     }
 
     private static String normalizeKey(String input) {
         return input == null ? "" : input.trim().toLowerCase(Locale.ROOT);
-    }
-
-    public void invalidateAll() {
-        playerCache.invalidateAll();
-        skullTemplateCache.invalidateAll();
     }
 }

@@ -34,7 +34,6 @@ public class LBMenuCommand implements CommandExecutor, TabCompleter {
             }
             plugin.getGUIConfig().reload();
             plugin.rebuildCaches();
-            me.wethink.lBmenu.leaderboard.FetcherRegistry.reset();
             sender.sendMessage(Component.text("LBmenu config reloaded.", NamedTextColor.GREEN));
             return true;
         }
@@ -56,7 +55,6 @@ public class LBMenuCommand implements CommandExecutor, TabCompleter {
         }
 
         String holderName = args[0].toLowerCase();
-        player.sendMessage(Component.text("Loading leaderboard: " + holderName + "...", NamedTextColor.GRAY));
         LeaderboardGUI.openAsync(plugin, player, holderName);
         return true;
     }

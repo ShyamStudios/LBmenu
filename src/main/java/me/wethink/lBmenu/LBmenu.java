@@ -29,23 +29,19 @@ public final class LBmenu extends JavaPlugin {
         skinCache        = new SkinCache(this);
         leaderboardCache = new LeaderboardCache(this);
 
-        // Commands & listeners
         LBMenuCommand cmd = new LBMenuCommand(this);
         getCommand("lbmenu").setExecutor(cmd);
         getCommand("lbmenu").setTabCompleter(cmd);
         getServer().getPluginManager().registerEvents(new GUIListener(this), this);
 
-        // bStats
         int pluginId = 30375;
         new Metrics(this, pluginId);
 
-        // Startup banner
         printStartupBanner(start);
     }
 
     @Override
     public void onDisable() {
-        if (leaderboardCache != null) leaderboardCache.stopRefreshTask();
         if (skinCache != null)        skinCache.invalidateAll();
         if (leaderboardCache != null) leaderboardCache.invalidateAll();
 
@@ -58,11 +54,7 @@ public final class LBmenu extends JavaPlugin {
     public LeaderboardCache getLeaderboardCache() { return leaderboardCache; }
     public GUIConfig getGUIConfig()               { return guiConfig; }
 
-    /**
-     * Rebuilds both caches and re-detects the active leaderboard plugin.
-     */
     public void rebuildCaches() {
-        if (leaderboardCache != null) leaderboardCache.stopRefreshTask();
         if (skinCache != null)        skinCache.invalidateAll();
         if (leaderboardCache != null) leaderboardCache.invalidateAll();
 
@@ -72,18 +64,10 @@ public final class LBmenu extends JavaPlugin {
         leaderboardCache = new LeaderboardCache(this);
     }
 
-    // ===============================
-    // 🔥 STARTUP BANNER
-    // ===============================
-
     private void printStartupBanner(long startTime) {
         String name = getDescription().getName();
         String version = getDescription().getVersion();
-
         String authors = String.join(", ", getDescription().getAuthors());
-        String website = getDescription().getWebsite() != null
-                ? getDescription().getWebsite()
-                : "Not specified";
 
         send("");
         send("&b&l━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -96,8 +80,8 @@ public final class LBmenu extends JavaPlugin {
 
         log("&7Initializing Folia scheduler...", "&a✔");
         log("&7Loading GUI configuration...", "&a✔");
-        log("&7Initializing skin cache...", "&a✔");
-        log("&7Initializing leaderboard cache...", "&a✔");
+        log("&7Initializing skin cache (AsyncLoadingCache)...", "&a✔");
+        log("&7Initializing leaderboard cache (AsyncLoadingCache + refreshAfterWrite)...", "&a✔");
         log("&7Registering commands...", "&a✔");
         log("&7Registering listeners...", "&a✔");
 
