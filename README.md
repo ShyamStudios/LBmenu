@@ -2,6 +2,7 @@
 
 # 🏆 LBMenu — Leaderboards, Reimagined
 
+[![bStats](https://img.shields.io/bstats/servers/30375.svg)](https://bstats.org/plugin/bukkit/Leaderboard%20Menu/30375)
 
 Transform your **ajLeaderboard / Topper data** into a sleek, fully interactive in-game menu.
 No more boring text lists — give your players a **modern, fast, and visually appealing leaderboard experience**.

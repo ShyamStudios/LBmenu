@@ -1,9 +1,12 @@
 package me.wethink.lBmenu.config;
 
 import me.wethink.lBmenu.LBmenu;
+import me.wethink.lBmenu.gui.CustomButton;
 import org.bukkit.Material;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class GUIConfig {
@@ -23,6 +26,7 @@ public class GUIConfig {
     }
 
     public int getRows()                 { return snap.rows; }
+    public List<CustomButton> getCustomButtons() { return snap.customButtons; }
     public int getSize()                 { return snap.rows * 9; }
     public String getTitleTemplate()     { return snap.titleTemplate; }
     public List<Integer> getSkullSlots() { return snap.skullSlots; }
@@ -81,6 +85,7 @@ public class GUIConfig {
         final int leaderboardRefreshSeconds;
         final int skinCacheMinutes;
         final int skinCacheMaxSize;
+        final List<CustomButton> customButtons;
 
         Snapshot(FileConfiguration cfg, LBmenu plugin) {
             rows          = Math.max(1, Math.min(6, cfg.getInt("gui.rows", 6)));
@@ -120,6 +125,60 @@ public class GUIConfig {
 
             skinCacheMinutes = Math.max(1,   cfg.getInt("cache.skins.ttl-minutes", 30));
             skinCacheMaxSize = Math.max(100, cfg.getInt("cache.skins.max-size", 2000));
+
+            List<CustomButton> buttonsList = new ArrayList<>();
+            ConfigurationSection guiButtonsSec = cfg.getConfigurationSection("gui.buttons");
+            if (guiButtonsSec != null) {
+                for (String key : guiButtonsSec.getKeys(false)) {
+                    ConfigurationSection sec = guiButtonsSec.getConfigurationSection(key);
+                    if (sec != null) {
+                        CustomButton btn = CustomButton.parse(sec, plugin);
+                        if (btn != null) buttonsList.add(btn);
+                    }
+                }
+            }
+            ConfigurationSection rootButtonsSec = cfg.getConfigurationSection("buttons");
+            if (rootButtonsSec != null) {
+                for (String key : rootButtonsSec.getKeys(false)) {
+                    ConfigurationSection sec = rootButtonsSec.getConfigurationSection(key);
+                    if (sec != null) {
+                        CustomButton btn = CustomButton.parse(sec, plugin);
+                        if (btn != null) buttonsList.add(btn);
+                    }
+                }
+            }
+            ConfigurationSection guiSec = cfg.getConfigurationSection("gui");
+            if (guiSec != null) {
+                for (String key : guiSec.getKeys(false)) {
+                    if (key.equalsIgnoreCase("rows") ||
+                        key.equalsIgnoreCase("title") ||
+                        key.equalsIgnoreCase("skull-slots") ||
+                        key.equalsIgnoreCase("skull") ||
+                        key.equalsIgnoreCase("filler") ||
+                        key.equalsIgnoreCase("prev-page") ||
+                        key.equalsIgnoreCase("next-page") ||
+                        key.equalsIgnoreCase("close") ||
+                        key.equalsIgnoreCase("buttons")) {
+                        continue;
+                    }
+                    ConfigurationSection sec = guiSec.getConfigurationSection(key);
+                    if (sec != null && sec.contains("material")) {
+                        CustomButton btn = CustomButton.parse(sec, plugin);
+                        if (btn != null) buttonsList.add(btn);
+                    }
+                }
+            }
+            for (String key : cfg.getKeys(false)) {
+                if (key.equalsIgnoreCase("gui") || key.equalsIgnoreCase("cache") || key.equalsIgnoreCase("buttons")) {
+                    continue;
+                }
+                ConfigurationSection sec = cfg.getConfigurationSection(key);
+                if (sec != null && sec.contains("material")) {
+                    CustomButton btn = CustomButton.parse(sec, plugin);
+                    if (btn != null) buttonsList.add(btn);
+                }
+            }
+            customButtons = List.copyOf(buttonsList);
         }
 
         private static Material parseMaterial(String name, Material fallback, LBmenu plugin) {

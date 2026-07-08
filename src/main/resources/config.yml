@@ -108,6 +108,16 @@ gui:
       - ""
       - "&e➥ &e&l&nCLICK&r &e&lto Refresh"
 
+  # Example custom button config:
+  # back:
+  #   material: RED_STAINED_GLASS_PANE
+  #   name: "&#FF1919Back"
+  #   lore:
+  #     - "&fClick to return"
+  #   slots: 45
+  #   actions:
+  #     - "[close]"
+
 cache:
 
   leaderboard:

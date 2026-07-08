@@ -92,6 +92,15 @@ public class LeaderboardGUI {
             if (slot < cfg.getSize()) inv.setItem(slot, builtSkulls[entryIndex]);
         }
 
+        for (CustomButton btn : cfg.getCustomButtons()) {
+            ItemStack item = buildCustomButtonItem(btn, p);
+            for (int slot : btn.getSlots()) {
+                if (slot < cfg.getSize()) {
+                    inv.setItem(slot, item);
+                }
+            }
+        }
+
         if (filler != null) {
             for (int slot = 0; slot < cfg.getSize(); slot++) {
                 if (inv.getItem(slot) == null) inv.setItem(slot, filler);
@@ -149,6 +158,33 @@ public class LeaderboardGUI {
                 .map(line -> legacy(line).decoration(TextDecoration.ITALIC, false))
                 .collect(Collectors.toList());
         meta.lore(lore);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack buildCustomButtonItem(CustomButton btn, int page) {
+        ItemStack item = new ItemStack(btn.getMaterial());
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
+        }
+        if (btn.getName() != null) {
+            String name = color(btn.getName()
+                    .replace("{holder}", capitalize(holderName))
+                    .replace("{page}", String.valueOf(page))
+                    .replace("{total}", String.valueOf(totalPages)));
+            meta.displayName(legacy(name).decoration(TextDecoration.ITALIC, false));
+        }
+        if (btn.getLore() != null) {
+            List<Component> lore = btn.getLore().stream()
+                    .map(line -> color(line
+                            .replace("{holder}", capitalize(holderName))
+                            .replace("{page}", String.valueOf(page))
+                            .replace("{total}", String.valueOf(totalPages))))
+                    .map(line -> legacy(line).decoration(TextDecoration.ITALIC, false))
+                    .collect(Collectors.toList());
+            meta.lore(lore);
+        }
         item.setItemMeta(meta);
         return item;
     }
