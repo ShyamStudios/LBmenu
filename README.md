@@ -46,6 +46,163 @@ LBMenu takes it further by turning that data into a **premium GUI system**:
 
 ---
 
+# Custom Button Actions
+
+Buttons can execute one or more actions when clicked. Add an `actions` section to any supported button configuration.
+
+## Player Command
+
+Executes a command as the player who clicked the button.
+
+```yaml
+actions:
+  - "[playercommand] leaderboards"
+```
+
+### Example
+
+```yaml
+back:
+  material: RED_STAINED_GLASS_PANE
+  name: "&#FF1919Back"
+  lore:
+    - "&fClick to return"
+  slots: 45
+  actions:
+    - "[playercommand] leaderboards"
+```
+
+## Console Command
+
+Executes a command from the server console.
+
+```yaml
+actions:
+  - "[consolecommand] give %player% diamond 1"
+```
+
+### Example
+
+```yaml
+reward:
+  material: DIAMOND
+  name: "&#55FFFFClaim Reward"
+  lore:
+    - "&fClick to claim your reward"
+  slots: 22
+  actions:
+    - "[consolecommand] give %player% diamond 1"
+```
+
+## Message
+
+Sends a message to the player.
+
+```yaml
+actions:
+  - "[message] &aYou clicked the button!"
+```
+
+### Example
+
+```yaml
+info:
+  material: BOOK
+  name: "&#FFD700Information"
+  lore:
+    - "&fClick to view information"
+  slots: 20
+  actions:
+    - "[message] &aWelcome to the server!"
+```
+
+## Close Menu
+
+Closes the player's currently open inventory.
+
+```yaml
+actions:
+  - "[close]"
+```
+
+### Example
+
+```yaml
+close:
+  material: BARRIER
+  name: "&#FF1919Close"
+  lore:
+    - "&fClick to close this menu"
+  slots: 49
+  actions:
+    - "[close]"
+```
+
+## Play Sound
+
+Plays a sound to the player.
+
+```yaml
+actions:
+  - "[sound] UI_BUTTON_CLICK"
+```
+
+### Example
+
+```yaml
+sound-test:
+  material: NOTE_BLOCK
+  name: "&#55FF55Play Sound"
+  lore:
+    - "&fClick to play a sound"
+  slots: 24
+  actions:
+    - "[sound] UI_BUTTON_CLICK"
+```
+
+## Multiple Actions
+
+A button can execute multiple actions. Actions are executed in the same order they are defined.
+
+```yaml
+reward:
+  material: CHEST
+  name: "&#FFD700Claim Reward"
+  lore:
+    - "&fClick to claim your reward"
+  slots: 22
+  actions:
+    - "[message] &aYou claimed your reward!"
+    - "[consolecommand] give %player% diamond 1"
+    - "[sound] ENTITY_PLAYER_LEVELUP"
+    - "[close]"
+```
+
+When the player clicks this button, it will:
+
+1. Send a message to the player.
+2. Give the player a diamond using a console command.
+3. Play a level-up sound.
+4. Close the menu.
+
+## Available Actions
+
+| Action                       | Description                         |
+| ---------------------------- | ----------------------------------- |
+| `[playercommand] <command>`  | Executes a command as the player    |
+| `[consolecommand] <command>` | Executes a command from the console |
+| `[message] <message>`        | Sends a message to the player       |
+| `[close]`                    | Closes the currently open menu      |
+| `[sound] <sound>`            | Plays a sound to the player         |
+
+## Notes
+
+* Do not include `/` before commands.
+* Multiple actions are executed in configuration order.
+* Invalid or unknown action types are ignored safely.
+* Use valid Bukkit/Paper sound names with the `[sound]` action.
+* `%player%` can be used where player-name placeholders are supported.
+
 ## 🛠️ Commands
 
 ```
