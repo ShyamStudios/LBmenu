@@ -67,7 +67,7 @@ public class LeaderboardCache {
         }
 
         CompletableFuture<List<LeaderboardEntry>> future = new CompletableFuture<>();
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        plugin.getFoliaLib().getScheduler().runNextTick(task -> {
             try {
                 future.complete(doFetch(key));
             } catch (Exception e) {

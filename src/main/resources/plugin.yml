@@ -1,5 +1,5 @@
 name: LBmenu
-version: '1.0'
+version: '1.1'
 main: me.wethink.lBmenu.LBmenu
 api-version: '1.21'
 authors: [ WeThink ]
